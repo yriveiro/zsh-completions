@@ -1,4 +1,4 @@
-#compdef _pass argo
+#compdef _pass pass
 
 # zsh completion for pass                                 -*- shell-script -*-
 
