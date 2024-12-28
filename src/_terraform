@@ -1,97 +1,124 @@
 #compdef terraform
 
-# Determine the Terraform binary path
-if command -v brew >/dev/null; then
-    TF_BIN="$(brew --prefix)/bin/terraform"
-else
-    TF_BIN="$(command -v terraform)"
-fi
+# ==============================================================================
+# ZSH Completion for Terraform
+# Purpose: Provide advanced completion for Terraform commands and options
+# Author: Claude
+# ==============================================================================
 
-if [[ ! -x $TF_BIN ]]; then
-    return 1
-fi
+# ------------------------------------------------------------------------------
+# Main Commands
+# ------------------------------------------------------------------------------
 
-# Cache file for Terraform commands
-CACHE_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/terraform/commands"
-CACHE_DIR="$(dirname "$CACHE_FILE")"
-mkdir -p "$CACHE_DIR"
+# Main commands as defined in terraform help
+_terraform_main_commands=(
+    'init:Prepare your working directory for other commands'
+    'validate:Check whether the configuration is valid'
+    'plan:Show changes required by the current configuration'
+    'apply:Create or update infrastructure'
+    'destroy:Destroy previously-created infrastructure'
+)
 
-# Helper function for logging debug output
-_debug() {
-    [[ -n $BASH_COMP_DEBUG_FILE ]] && echo "$*" >> "$BASH_COMP_DEBUG_FILE"
-}
+# Other commands as defined in terraform help
+_terraform_other_commands=(
+    'console:Try Terraform expressions at an interactive command prompt'
+    'fmt:Reformat your configuration in the standard style'
+    'force-unlock:Release a stuck lock on the current workspace'
+    'get:Install or upgrade remote Terraform modules'
+    'graph:Generate a Graphviz graph of the steps in an operation'
+    'import:Associate existing infrastructure with a Terraform resource'
+    'login:Obtain and save credentials for a remote host'
+    'logout:Remove locally-stored credentials for a remote host'
+    'metadata:Metadata related commands'
+    'output:Show output values from your root module'
+    'providers:Show the providers required for this configuration'
+    'refresh:Update the state to match remote systems'
+    'show:Show the current state or a saved plan'
+    'state:Advanced state management'
+    'taint:Mark a resource instance as not fully functional'
+    'test:Execute integration tests for Terraform modules'
+    'untaint:Remove the tainted state from a resource instance'
+    'version:Show the current Terraform version'
+    'workspace:Workspace management'
+)
 
-# Parse Terraform commands and cache them
-parse_commands() {
-    local help_text commands_section
-    help_text="$($TF_BIN -help 2>/dev/null)"
+# Global flags as defined in terraform help
+_terraform_global_flags=(
+    '-chdir:Switch to a different working directory before executing the given subcommand'
+    '-help:Show this help output, or the help for a specified subcommand'
+    '-version:An alias for the version subcommand'
+)
 
-    # Extract commands from both sections: "Main commands" and "All other commands"
-    commands_section=$(echo "$help_text" | awk '/^Main commands:/,/^$|^Global options/' | tail -n +2)
-    commands_section+=$(echo "$help_text" | awk '/^All other commands:/,/^$|^Global options/' | tail -n +2)
+# ------------------------------------------------------------------------------
+# Subcommand Definitions
+# ------------------------------------------------------------------------------
 
-    # Parse commands and descriptions, filtering out invalid lines
-    echo "$commands_section" | awk '/^  / {cmd = $1; $1 = ""; print cmd ":" substr($0, 2)}' | grep -E '^[a-zA-Z0-9_-]+:' > "$CACHE_FILE"
-}
+# Workspace subcommands
+_terraform_workspace_subcommands=(
+    'new:Create a new workspace'
+    'list:List workspaces'
+    'show:Show the current workspace'
+    'select:Select a workspace'
+    'delete:Delete a workspace'
+)
 
-# Get Terraform commands from cache (or parse if outdated)
-get_commands() {
-    if [[ ! -f $CACHE_FILE || $(find "$CACHE_FILE" -mtime +1 2>/dev/null) ]]; then
-        parse_commands
-    fi
-    cat "$CACHE_FILE"
-}
+# State subcommands
+_terraform_state_subcommands=(
+    'list:List resources in the state'
+    'show:Show a resource in the state'
+    'mv:Move an item in the state'
+    'rm:Remove instances from the state'
+    'pull:Pull current state'
+    'push:Update remote state from local'
+    'replace-provider:Replace provider in the state'
+)
 
-# Parse subcommands for a specific Terraform command
-get_subcommands() {
-    local cmd="$1" help_text subcommands
-    help_text="$($TF_BIN "$cmd" -help 2>/dev/null)"
-    subcommands=$(echo "$help_text" | awk '/^Subcommands:$/,/^$/' | tail -n +2)
+# Provider subcommands
+_terraform_providers_subcommands=(
+    'mirror:Mirror providers for the current configuration'
+    'schema:Show schemas for the providers'
+)
 
-    echo "$subcommands" | awk '/^  / {subcmd = $1; $1 = ""; print subcmd ":" substr($0, 2)}' | grep -E '^[a-zA-Z0-9_-]+:'
-}
+# ------------------------------------------------------------------------------
+# Completion Function
+# ------------------------------------------------------------------------------
 
-# Parse flags for a specific Terraform command
-get_flags() {
-    local cmd="$1" help_text flags
-    help_text="$($TF_BIN "$cmd" -help 2>/dev/null)"
-    flags=$(echo "$help_text" | awk '/^[[:space:]]*-/ {flag = $1; $1 = ""; print flag ":" substr($0, 2)}')
-
-    echo "$flags" | grep -E '^-[a-zA-Z0-9_-]+:'
-}
-
-# Main completion function
 _terraform() {
-    local state context cur commands subcommands flags ret=1
-    curcontext="$curcontext" state="" ret=1
-
-    commands=($(get_commands))
+    local context state state_descr line ret=1
+    typeset -A opt_args
 
     _arguments -C \
-        '1: :->commands' \
-        '*:: :->args'
+        '1: :->command' \
+        '*:: :->args' && ret=0
 
     case $state in
-        commands)
-            _describe -t commands 'Terraform commands' commands && ret=0
+        command)
+            _describe -t terraform-main-commands 'terraform main commands' _terraform_main_commands && ret=0
+            _describe -t terraform-other-commands 'terraform other commands' _terraform_other_commands && ret=0
+            _describe -t terraform-global-flags 'terraform global flags' _terraform_global_flags && ret=0
             ;;
         args)
             case $words[1] in
-                state|workspace|providers)
-                    subcommands=($(get_subcommands "$words[1]"))
-                    _describe -t subcommands "${words[1]} subcommands" subcommands && ret=0
+                workspace)
+                    _describe -t terraform-workspace-subcommands 'terraform workspace subcommands' _terraform_workspace_subcommands && ret=0
                     ;;
-                *)
-                    flags=($(get_flags "$words[1]"))
-                    _describe -t flags "${words[1]} flags" flags && ret=0
-                    _files && ret=0
+                state)
+                    _describe -t terraform-state-subcommands 'terraform state subcommands' _terraform_state_subcommands && ret=0
+                    ;;
+                providers)
+                    _describe -t terraform-providers-subcommands 'terraform providers subcommands' _terraform_providers_subcommands && ret=0
+                    ;;
+                init|plan|apply|destroy|refresh)
+                    _arguments \
+                        '-var[Set a variable in the Terraform configuration]' \
+                        '-var-file[Set variables from a file]:file:_files -g "*.tfvars"' \
+                        '*:file:_files -g "*.tf"' && ret=0
                     ;;
             esac
             ;;
     esac
 
-    return $ret
+    return ret
 }
 
-# Associate the _terraform function with the terraform command
 compdef _terraform terraform
