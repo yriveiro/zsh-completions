@@ -1,5 +1,12 @@
 #compdef terraform
 
+# Get the Terraform binary path
+if command -v brew >/dev/null; then
+    __terraform_bin="$(brew --prefix)/bin/terraform"
+else
+    __terraform_bin="$(command -v terraform)"
+fi
+
 __terraform_debug() {
     local file="$BASH_COMP_DEBUG_FILE"
     if [[ -n ${file} ]]; then
@@ -12,22 +19,21 @@ __terraform_commands_cache_file="${XDG_CACHE_HOME:-$HOME/.cache}/terraform_comma
 
 # Function to parse terraform commands and their descriptions
 __terraform_parse_commands() {
-    local help_text commands_text
-    help_text=$(terraform -help 2>/dev/n
+    local cmds help_text commands_text
+    help_text="$($__terraform_bin -help 2>/dev/null)"
 
     # Extract the commands section from help text
-    commands_text=$(echo "$help_text" | awk '/^Available commands are:/,/^$/' | tail -n
+    commands_text="$(echo "$help_text" | awk '/^Available commands are:/,/^$/' | tail -n +2)"
 
     # Create cache directory if it doesn't exist
-    mkdir -p "$(dirname "$__terraform_commands_cache_file"
+    mkdir -p "$(dirname "$__terraform_commands_cache_file")"
 
     # Parse and store commands in cache file
-    echo "$commands_text" | while read -r line; do
+    echo "$commands_text" | while IFS= read -r line; do
         if [[ -n "$line" ]]; then
             # Extract command and description
-            local cmd desc
-            cmd=$(echo "$line" | awk '{print $1}')
-            desc=$(echo "$line" | sed "s/^$cmd *//")
+            cmd="$(echo "$line" | awk '{print $1}')"
+            desc="$(echo "$line" | sed "s/^$cmd *//; s/ *$//")"
             echo "${cmd}:${desc}"
         fi
     done > "$__terraform_commands_cache_file"
@@ -36,18 +42,17 @@ __terraform_parse_commands() {
 # Function to get subcommands for a specific command
 __terraform_parse_subcommands() {
     local cmd="$1"
-    local help_text subcommands_text
-    help_text=$(terraform $cmd -help 2>/dev/nul
+    local subcmds help_text subcommands_text
+    help_text="$($__terraform_bin "$cmd" -help 2>/dev/null)"
 
     # Extract subcommands section if it exists
-    subcommands_text=$(echo "$help_text" | awk '/^Subcommands:$/,/^$/' | tail -n +2
+    subcommands_text="$(echo "$help_text" | awk '/^Subcommands:$/,/^$/' | tail -n +2)"
 
     # Parse and return subcommands
-    echo "$subcommands_text" | while read -r line; do
+    echo "$subcommands_text" | while IFS= read -r line; do
         if [[ -n "$line" ]]; then
-            local subcmd desc
-            subcmd=$(echo "$line" | awk '{print $1}')
-            desc=$(echo "$line" | sed "s/^$subcmd *//")
+            subcmd="$(echo "$line" | awk '{print $1}')"
+            desc="$(echo "$line" | sed "s/^$subcmd *//; s/ *$//")"
             echo "${subcmd}:${desc}"
         fi
     done
@@ -56,18 +61,17 @@ __terraform_parse_subcommands() {
 # Function to get flags for a command
 __terraform_parse_flags() {
     local cmd="$1"
-    local help_text flags_text
-    help_text=$(terraform $cmd -help 2>/dev/null)
- 
+    local flag desc help_text flags_text
+    help_text="$($__terraform_bin "$cmd" -help 2>/dev/null)"
+
     # Extract flags section
-    flags_text=$(echo "$help_text" | awk '/^[[:space:]]*-/,/^$/' | grep "^[[:space:]]*-")
+    flags_text="$(echo "$help_text" | awk '/^[[:space:]]*-/,/^$/' | grep "^[[:space:]]*-")"
 
     # Parse and return flags
-    echo "$flags_text" | while read -r line; do
+    echo "$flags_text" | while IFS= read -r line; do
         if [[ -n "$line" ]]; then
-            local flag desc
-            flag=$(echo "$line" | awk '{print $1}')
-            desc=$(echo "$line" | sed "s/^$flag *//")
+            flag="$(echo "$line" | awk '{print $1}')"
+            desc="$(echo "$line" | sed "s/^$flag *//; s/ *$//")"
             echo "${flag}:${desc}"
         fi
     done
@@ -78,6 +82,11 @@ _terraform() {
     local -A opt_args
     local -a commands subcommands flags
 
+    # Check if terraform is available
+    if [[ ! -x "$__terraform_bin" ]]; then
+        return 1
+    fi
+
     # Check if we need to update the commands cache
     if [[ ! -f "$__terraform_commands_cache_file" ]] || \
        [[ $(find "$__terraform_commands_cache_file" -mtime +1) ]]; then
@@ -85,7 +94,7 @@ _terraform() {
     fi
 
     # Read commands from cache
-    commands=("${(@f)$(<$__terraform_commands_cache_file)}")
+    commands=("${(@f)$(<"$__terraform_commands_cache_file")}")
 
     _arguments -C \
         '1: :->cmds' \
@@ -99,7 +108,7 @@ _terraform() {
             case $words[1] in
                 state|workspace|providers)
                     # Get subcommands dynamically
-                    subcommands=("${(f)$(terraform_parse_subcommands $words[1])}")
+                    subcommands=("${(f)$(__terraform_parse_subcommands $words[1])}")
                     _describe -t subcmds "terraform $words[1] subcommand" subcommands && ret=0
                     ;;
                 *)
@@ -111,11 +120,9 @@ _terraform() {
             esac
             ;;
     esac
-
     return ret
 }
 
-# don't run the completion function when being source-ed or eval-ed
-if [ "$funcstack[1]" = "_terraform" ]; then
+if [[ "$funcstack[1]" = "_terraform" ]]; then
     _terraform
 fi
