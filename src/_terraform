@@ -30,8 +30,8 @@ parse_commands() {
     commands_section=$(echo "$help_text" | awk '/^Main commands:/,/^$|^Global options/' | tail -n +2)
     commands_section+=$(echo "$help_text" | awk '/^All other commands:/,/^$|^Global options/' | tail -n +2)
 
-    # Parse commands and descriptions
-    echo "$commands_section" | awk '/^  / {cmd = $1; $1 = ""; print cmd ":" substr($0, 2)}' > "$CACHE_FILE"
+    # Parse commands and descriptions, filtering out invalid lines
+    echo "$commands_section" | awk '/^  / {cmd = $1; $1 = ""; print cmd ":" substr($0, 2)}' | grep -E '^[a-zA-Z0-9_-]+:' > "$CACHE_FILE"
 }
 
 # Get Terraform commands from cache (or parse if outdated)
@@ -48,16 +48,16 @@ get_subcommands() {
     help_text="$($TF_BIN "$cmd" -help 2>/dev/null)"
     subcommands=$(echo "$help_text" | awk '/^Subcommands:$/,/^$/' | tail -n +2)
 
-    echo "$subcommands" | awk '{subcmd = $1; $1 = ""; print subcmd ":" substr($0,2)}'
+    echo "$subcommands" | awk '/^  / {subcmd = $1; $1 = ""; print subcmd ":" substr($0, 2)}' | grep -E '^[a-zA-Z0-9_-]+:'
 }
 
 # Parse flags for a specific Terraform command
 get_flags() {
     local cmd="$1" help_text flags
     help_text="$($TF_BIN "$cmd" -help 2>/dev/null)"
-    flags=$(echo "$help_text" | awk '/^[[:space:]]*-/ {flag = $1; $1 = ""; print flag ":" substr($0,2)}')
+    flags=$(echo "$help_text" | awk '/^[[:space:]]*-/ {flag = $1; $1 = ""; print flag ":" substr($0, 2)}')
 
-    echo "$flags"
+    echo "$flags" | grep -E '^-[a-zA-Z0-9_-]+:'
 }
 
 # Main completion function
